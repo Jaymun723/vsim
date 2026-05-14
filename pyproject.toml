@@ -1,0 +1,53 @@
+[build-system]
+requires = ["hatchling>=1.26"]
+build-backend = "hatchling.build"
+
+[project]
+name = "vsim"
+version = "0.1.0"
+description = "Quantum circuit simulation utilities (lossy surface-code sampling)."
+readme = "README.md"
+requires-python = ">=3.14"
+dependencies = [
+    "numpy>=2.4.4",
+    "stim>=1.15.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "coverage[toml]>=7.6",
+    "ipykernel>=7.2.0",
+    "ipywidgets>=8.1.8",
+    "matplotlib>=3.10.9",
+    "pytest>=8.3",
+    "pytest-cov>=6.0",
+    "scipy>=1.17.1",
+    "tqdm>=4.67.3",
+]
+
+[dependency-groups]
+dev = [
+    "coverage[toml]>=7.6",
+    "ipykernel>=7.2.0",
+    "ipywidgets>=8.1.8",
+    "matplotlib>=3.10.9",
+    "pytest>=8.3",
+    "pytest-cov>=6.0",
+    "scipy>=1.17.1",
+    "tqdm>=4.67.3",
+]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = [
+    "--cov=vsim",
+    "--cov-report=term-missing",
+    "--cov-fail-under=100",
+]
+
+[tool.coverage.run]
+branch = true
+source = ["vsim"]
+
+[tool.coverage.report]
+exclude_lines = ["pragma: no cover", "if __name__ == .__main__.:"]
