@@ -6,6 +6,7 @@ from vsim.loss_lib import (
     LossyCircuit,
     SymmetricalLossyCircuit,
     add_noise,
+    apply_loss_to_measurement_record,
 )
 
 __version__ = "0.1.0"
@@ -16,5 +17,6 @@ __all__ = [
     "LossyCircuit",
     "SymmetricalLossyCircuit",
     "add_noise",
+    "apply_loss_to_measurement_record",
     "__version__",
 ]

@@ -10,7 +10,6 @@ import pytest
 import stim
 
 import vsim
-from vsim import loss_lib as ll
 from tests.stim_fixtures import SURFACE_LOSS_STIM
 from vsim.loss_lib import (
     LossInstruction,
@@ -18,6 +17,7 @@ from vsim.loss_lib import (
     LossyCircuit,
     SymmetricalLossyCircuit,
     add_noise,
+    apply_loss_to_measurement_record,
 )
 
 
@@ -97,18 +97,28 @@ def test_symmetrical_load_from_path(tmp_path):
     assert c.circuit_path == p
 
 
-def test_lossy_circuit_repr_matches_str():
+def test_apply_loss_rejects_bad_ndim():
+    with pytest.raises(ValueError, match="1d or 2d"):
+        apply_loss_to_measurement_record(np.zeros((1, 2, 3), dtype=np.uint8), [0])
+
+
+def test_loss_instruction_targets_copy():
+    li = LossInstruction("LOSS(0.1) 5")
+    tc = li.targets_copy()
+    assert len(tc) == 1 and tc[0].value == 5
+
+
+def test_lossy_circuit_repr_readable():
     c = LossyCircuit.from_text(SURFACE_LOSS_STIM)
-    assert repr(c) == str(c)
+    assert repr(c).startswith("LossyCircuit('''")
 
 
 def test_lossy_circuit_from_text_surface_fixture():
     c = LossyCircuit.from_text(SURFACE_LOSS_STIM)
     assert c.circuit_path is None
     rng = np.random.default_rng(0)
-    s, m = c.syndrome(rng)
+    s = c.syndrome(rng)
     assert isinstance(s, LossSyndrome)
-    assert m >= 0
 
 
 def test_symmetrical_from_text():
@@ -125,30 +135,16 @@ def test_add_noise_cx_and_r():
     c.append("R", [0])
     c.append("CX", [0, 1])
     lossy = add_noise(c, 0.02, 0.03)
-    assert "LOSS(0.02)" in lossy.circuit
-    assert "LOSS(0.03)" in lossy.circuit
-
-
-def test_parse_nominal_and_events_helpers():
-    stim_txt = (
-        "QUBIT_COORDS(0, 0) 0\n"
-        "R 0\n"
-        "LOSS(0.1) 0\n"
-        "MR 0\n"
-    )
-    nominal, losses, events = ll._parse_nominal_and_events(stim_txt)
-    assert "LOSS" not in nominal
-    assert len(losses) == 1
-    assert events == [("clear", (0,)), ("loss", 0), ("clear", (0,))]
+    text = str(lossy)
+    assert "LOSS(0.02)" in text and "LOSS(0.03)" in text
 
 
 def test_syndrome_phys_no_loss_instructions(tmp_path):
     p = tmp_path / "t.stim"
     p.write_text("QUBIT_COORDS(0, 0) 0\nR 0\n", encoding="utf-8")
     c = LossyCircuit(p)
-    s, m = c.syndrome(np.random.default_rng(0))
+    s = c.syndrome(np.random.default_rng(0))
     assert str(s) == ""
-    assert m == 0
 
 
 def test_phys_syndrome_second_hit_same_qubit_skipped(tmp_path):
@@ -159,8 +155,8 @@ def test_phys_syndrome_second_hit_same_qubit_skipped(tmp_path):
     )
     c = LossyCircuit(p)
     rng = np.random.default_rng(0)
-    s, m = c.syndrome(rng)
-    assert m == 1
+    s = c.syndrome(rng)
+    assert len(s) == 1
 
 
 def test_symmetrical_syndrome_no_draw_branch():
