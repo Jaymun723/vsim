@@ -1,12 +1,17 @@
 """
-Benchmark two ways to spend the same total number of Monte Carlo shots:
+Benchmark different simulation paths:
 
   Path A (histogram + rewritten sampler)
     1) Draw `shots` loss syndromes.
     2) Count shots required per distinct syndrome pattern.
     3) For each pattern: rewrite once, then sample the rewritten circuit the required number of times.
 
-  Path B (integrated tableau path)
+  Path B (histogram + rewritten tableau loop)
+    1) Draw `shots` loss syndromes.
+    2) Count shots required per distinct syndrome pattern.
+    3) For each pattern: rewrite once, then run TableauSimulator.do_circuit for each shot.
+
+  Path C (integrated tableau path)
     Call ``run(seed)`` exactly ``shots`` times with sequential seeds.
 
 Distances default to 3, 5, 7 (surface_code:rotated_memory_z + add_noise).
@@ -61,17 +66,6 @@ def build_lossy_circuit(
     return add_noise(stim_surface, p_loss_2q, p_loss_reset)
 
 
-def check_syndrome_agreement(lc: LossyCircuit, n_seeds: int) -> tuple[int, list[int]]:
-    mismatches: list[int] = []
-    for seed in range(n_seeds):
-        rng = np.random.default_rng(seed)
-        s_a = lc.syndrome(rng)
-        s_b, _rec = lc.run(seed)
-        if _canonical_syndrome_tuple(s_a) != _canonical_syndrome_tuple(s_b):
-            mismatches.append(seed)
-    return n_seeds - len(mismatches), mismatches
-
-
 def bench_histogram_and_sampler(
     lc: LossyCircuit,
     shots: int,
@@ -105,6 +99,45 @@ def bench_histogram_and_sampler(
     return t_hist, t_samplers, len(counts)
 
 
+def bench_histogram_and_tableau(
+    lc: LossyCircuit,
+    shots: int,
+    seed: int,
+) -> tuple[float, float, int]:
+    """Returns (histogram_seconds, rewrite_tableau_seconds, unique_patterns)."""
+    rng = np.random.default_rng(seed)
+
+    t0 = time.perf_counter()
+    counts: dict[tuple[tuple[int, int], ...], int] = {}
+    templates: dict[tuple[tuple[int, int], ...], LossSyndrome] = {}
+    for _ in range(shots):
+        s = lc.syndrome(rng)
+        key = _canonical_syndrome_tuple(s)
+        counts[key] = counts.get(key, 0) + 1
+        templates.setdefault(key, _clone_syndrome(s))
+    t_hist = time.perf_counter() - t0
+
+    t1 = time.perf_counter()
+    for bi, key in enumerate(sorted(counts.keys())):
+        cnt = counts[key]
+        rew, loss_measurement_idxs = lc.rewrite_circuit_from_syndrome(templates[key])
+
+        results = np.zeros((cnt, rew.num_measurements), dtype=np.uint8)
+
+        for i in range(cnt):
+            tableau = stim.TableauSimulator(seed=int(seed + i))
+            tableau.do_circuit(rew)
+            results[i, :] = np.array(
+                tableau.current_measurement_record(), dtype=np.uint8
+            )
+
+        apply_loss_to_measurement_record(results, loss_measurement_idxs)
+
+    t_tableaus = time.perf_counter() - t1
+
+    return t_hist, t_tableaus, len(counts)
+
+
 def bench_run_path(lc: LossyCircuit, shots: int, seed_start: int) -> float:
     t0 = time.perf_counter()
     for i in range(shots):
@@ -114,7 +147,7 @@ def bench_run_path(lc: LossyCircuit, shots: int, seed_start: int) -> float:
 
 def main() -> None:
     p = argparse.ArgumentParser(
-        description="Benchmark histogram+rewrite+sampler vs integrated run()",
+        description="Benchmark simulation paths A, B, and C",
     )
     p.add_argument(
         "--distances", type=int, nargs="+", default=[3, 5, 7], help="default=3 5 7"
@@ -144,38 +177,42 @@ def main() -> None:
         default=7,
         help="RNG for syndrome histogram phase, default=7",
     )
+    p.add_argument("--skip-a", action="store_true", help="Skip path A")
+    p.add_argument("--skip-b", action="store_true", help="Skip path B")
+    p.add_argument("--skip-c", action="store_true", help="Skip path C")
     args = p.parse_args()
 
     for d in args.distances:
         lc = build_lossy_circuit(d, args.rounds, args.p_loss_2q, args.p_loss_reset)
         print(f"\ndistance={d}")
 
-        hist_times: list[float] = []
-        samp_times: list[float] = []
-        uniqs: list[int] = []
-        run_times: list[float] = []
+        res_a: list[tuple[float, float, int]] = []
+        res_b: list[tuple[float, float, int]] = []
+        res_c: list[float] = []
 
         for repeat_index in range(args.repeats):
-            th, ts, u = bench_histogram_and_sampler(lc, args.shots, args.seed)
-            hist_times.append(th)
-            samp_times.append(ts)
-            uniqs.append(u)
-            run_times.append(bench_run_path(lc, args.shots, args.seed + repeat_index))
+            if not args.skip_a:
+                res_a.append(bench_histogram_and_sampler(lc, args.shots, args.seed))
+            if not args.skip_b:
+                res_b.append(bench_histogram_and_tableau(lc, args.shots, args.seed))
+            if not args.skip_c:
+                res_c.append(bench_run_path(lc, args.shots, args.seed + repeat_index))
 
-        mt_hist = mean(hist_times)
-        mt_samp = mean(samp_times)
-        mt_rewrite_total = mt_hist + mt_samp
-        mt_run = mean(run_times)
-        ratio = mt_run / mt_rewrite_total if mt_rewrite_total > 0 else float("inf")
+        if not args.skip_a:
+            m_hist = mean(r[0] for r in res_a)
+            m_samp = mean(r[1] for r in res_a)
+            m_uniqs = mean(r[2] for r in res_a)
+            print(f"  Path A (hist+sampler) total: {m_hist + m_samp:.4f}s (hist={m_hist:.4f}s, samp={m_samp:.4f}s, uniq={m_uniqs:.1f})")
 
-        print(
-            f"  shots={args.shots}  unique_syndromes~{mean(uniqs):.1f} (mean over repeats)"
-        )
-        print(f"  histogram phase (syndrome draws): {mt_hist:.4f}s")
-        print(f"  rewrite+sampler phase (flattened circuit per bucket): {mt_samp:.4f}s")
-        print(f"  path A total: {mt_rewrite_total:.4f}s")
-        print(f"  path B run(): {mt_run:.4f}s")
-        print(f"  ratio(run/A_total)={ratio:.2f}x")
+        if not args.skip_b:
+            m_hist = mean(r[0] for r in res_b)
+            m_tab = mean(r[1] for r in res_b)
+            m_uniqs = mean(r[2] for r in res_b)
+            print(f"  Path B (hist+tableau) total: {m_hist + m_tab:.4f}s (hist={m_hist:.4f}s, tab={m_tab:.4f}s, uniq={m_uniqs:.1f})")
+
+        if not args.skip_c:
+            m_run = mean(res_c)
+            print(f"  Path C (run() loop)   total: {m_run:.4f}s")
 
 
 if __name__ == "__main__":
