@@ -192,10 +192,10 @@ def main() -> None:
         default=7,
         help="RNG for syndrome histogram phase, default=7",
     )
-    p.add_argument("--skip-a", action="store_true", help="Skip path A")
-    p.add_argument("--skip-b", action="store_true", help="Skip path B")
-    p.add_argument("--skip-c", action="store_true", help="Skip path C")
-    p.add_argument("--skip-d", action="store_true", help="Skip path D")
+    p.add_argument("-A", "--path-a", action="store_true", help="Run path A (histogram + rewritten sampler)")
+    p.add_argument("-B", "--path-b", action="store_true", help="Run path B (histogram + rewritten tableau loop)")
+    p.add_argument("-C", "--path-c", action="store_true", help="Run path C (integrated tableau path)")
+    p.add_argument("-D", "--path-d", action="store_true", help="Run path D (C++ FastLossyCircuit.run() loop)")
     args = p.parse_args()
 
     for d in args.distances:
@@ -203,7 +203,7 @@ def main() -> None:
         print(f"\ndistance={d}")
 
         # FastLossyCircuit reuses the same circuit text — build once per distance.
-        if FastLossyCircuit is not None and not args.skip_d:
+        if FastLossyCircuit is not None and args.path_d:
             fc = FastLossyCircuit.from_text(lc.pretty_print())
         else:
             fc = None
@@ -214,32 +214,32 @@ def main() -> None:
         res_d: list[float] = []
 
         for repeat_index in range(args.repeats):
-            if not args.skip_a:
+            if args.path_a:
                 res_a.append(bench_histogram_and_sampler(lc, args.shots, args.seed))
-            if not args.skip_b:
+            if args.path_b:
                 res_b.append(bench_histogram_and_tableau(lc, args.shots, args.seed))
-            if not args.skip_c:
+            if args.path_c:
                 res_c.append(bench_run_path(lc, args.shots, args.seed + repeat_index))
-            if not args.skip_d and fc is not None:
+            if args.path_d and fc is not None:
                 res_d.append(bench_fast_run_path(fc, args.shots, args.seed + repeat_index))
 
-        if not args.skip_a:
+        if args.path_a:
             m_hist = mean(r[0] for r in res_a)
             m_samp = mean(r[1] for r in res_a)
             m_uniqs = mean(r[2] for r in res_a)
             print(f"  Path A (hist+sampler) total: {m_hist + m_samp:.4f}s (hist={m_hist:.4f}s, samp={m_samp:.4f}s, uniq={m_uniqs:.1f})")
 
-        if not args.skip_b:
+        if args.path_b:
             m_hist = mean(r[0] for r in res_b)
             m_tab = mean(r[1] for r in res_b)
             m_uniqs = mean(r[2] for r in res_b)
             print(f"  Path B (hist+tableau) total: {m_hist + m_tab:.4f}s (hist={m_hist:.4f}s, tab={m_tab:.4f}s, uniq={m_uniqs:.1f})")
 
-        if not args.skip_c:
+        if args.path_c:
             m_run = mean(res_c)
             print(f"  Path C (run() loop)   total: {m_run:.4f}s")
 
-        if not args.skip_d and res_d:
+        if args.path_d and res_d:
             m_fast = mean(res_d)
             speedup_c = (mean(res_c) / m_fast) if res_c else float("nan")
             print(
