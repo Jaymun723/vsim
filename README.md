@@ -4,6 +4,8 @@ Loss-aware sampling for Stim circuits (surface-code workflows).
 
 ## Install
 
+> Note: this package has only been tested with Python **3.14**.
+
 ```bash
 uv add vsim
 # Or using pip
