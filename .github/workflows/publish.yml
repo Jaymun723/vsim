@@ -44,7 +44,7 @@ jobs:
         env:
           CIBW_BUILD: cp314-*
           CIBW_TEST_COMMAND: pytest {project}/tests
-          CIBW_TEST_REQUIRES: pytest stim numpy
+          CIBW_TEST_REQUIRES: pytest pytest-cov stim numpy
 
       - uses: actions/upload-artifact@v4
         with:
