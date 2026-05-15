@@ -29,7 +29,9 @@ circuit = Circuit.generated(
 )
 
 # Add loss probabilities after 2 qubit gates, and reset gates
-lossy_circuit = add_noise(circuit, p_2q = 0.01, p_reset = 0.01)
+lossy_circuit = FastLossyCircuit.from_text(
+    str(add_noise(circuit, p_2q = 0.01, p_reset = 0.01))
+)
 
 results = []
 shots = 10_000
@@ -39,22 +41,6 @@ for _ in range(shots):
     results.append(
         lossy_circuit.run()
     )
-```
-
-## FastLossyCircuit
-
-`FastLossyCircuit` is a drop-in C++ replacement for the per-shot path of `LossyCircuit.run()`. The expensive work — parsing and categorising instructions — happens once in `__init__`; each `run(seed)` then samples loss dice and drives `stim::TableauSimulator` in C++.
-
-```python
-from vsim import FastLossyCircuit
-
-fc = FastLossyCircuit("path/to/circuit.stim")
-# or: fc = FastLossyCircuit.from_text(circuit_text)
-
-measurements = fc.run(seed=0)
-# np.ndarray[uint8] of length num_measurements
-#   0, 1 → measurement outcome
-#   2    → heralded-loss slot
 ```
 
 Typical speedups vs. Python-based sampling on rotated-memory-z surface codes: ~50× at d=3, ~60× at d=5, ~75× at d=7.
