@@ -203,7 +203,9 @@ def main() -> None:
     p.add_argument("--skip-a", action="store_true", help="Skip path A")
     p.add_argument("--skip-b", action="store_true", help="Skip path B")
     p.add_argument("--skip-c", action="store_true", help="Skip path C")
-    p.add_argument("--skip-d", action="store_true", help="Skip path D (FastLossyCircuit)")
+    p.add_argument(
+        "--skip-d", action="store_true", help="Skip path D (FastLossyCircuit)"
+    )
     args = p.parse_args()
 
     for d in args.distances:
@@ -237,13 +239,17 @@ def main() -> None:
             m_hist = mean(r[0] for r in res_a)
             m_samp = mean(r[1] for r in res_a)
             m_uniqs = mean(r[2] for r in res_a)
-            print(f"  Path A (hist+sampler) total: {m_hist + m_samp:.4f}s (hist={m_hist:.4f}s, samp={m_samp:.4f}s, uniq={m_uniqs:.1f})")
+            print(
+                f"  Path A (hist+sampler)          total: {m_hist + m_samp:.4f}s (hist={m_hist:.4f}s, samp={m_samp:.4f}s, uniq={m_uniqs:.1f})"
+            )
 
         if not args.skip_b:
             m_hist = mean(r[0] for r in res_b)
             m_tab = mean(r[1] for r in res_b)
             m_uniqs = mean(r[2] for r in res_b)
-            print(f"  Path B (hist+tableau) total: {m_hist + m_tab:.4f}s (hist={m_hist:.4f}s, tab={m_tab:.4f}s, uniq={m_uniqs:.1f})")
+            print(
+                f"  Path B (hist+tableau)          total: {m_hist + m_tab:.4f}s (hist={m_hist:.4f}s, tab={m_tab:.4f}s, uniq={m_uniqs:.1f})"
+            )
 
         if not args.skip_c:
             m_run = mean(res_c)
