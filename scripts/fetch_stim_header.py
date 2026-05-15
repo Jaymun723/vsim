@@ -16,7 +16,7 @@ _PYPI_SDIST_URL = "https://files.pythonhosted.org/packages/source/s/stim/stim-{v
 
 # Known-good SHA-256 for the full stim-{version}.tar.gz sdist archive.
 _KNOWN_SHA256: dict[str, str] = {
-    "1.15.0": "cb0d01b76a596f97f2f46d6d8831274f95ed47f7688a14a3aafde25f5cf68f88",
+    "1.15.0": "95236006859d6754be99629d4fb44788e742e962ac8c59caad421ca088f7350e",
 }
 
 

@@ -172,7 +172,7 @@ def test_fast_lossy_runs_across_code_distances(tmp_path: Path, distance: int):
         before_measure_flip_probability=0.01,
         after_reset_flip_probability=0.01,
     )
-    lossy = add_noise(circuit, p_loss_2q=0.01, p_loss_reset=0.01)
+    lossy = add_noise(circuit, 0.01, 0.01)
     p = tmp_path / f"d{distance}.stim"
     p.write_text(str(lossy), encoding="utf-8")
 
