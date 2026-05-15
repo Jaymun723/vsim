@@ -1,6 +1,6 @@
 [build-system]
-requires = ["hatchling>=1.26"]
-build-backend = "hatchling.build"
+requires = ["scikit-build-core>=0.10", "pybind11>=2.13"]
+build-backend = "scikit_build_core.build"
 
 [project]
 name = "vsim"
@@ -36,6 +36,12 @@ dev = [
     "scipy>=1.17.1",
     "tqdm>=4.67.3",
 ]
+
+[tool.scikit-build]
+cmake.version = ">=3.20"
+build-dir = "build/{wheel_tag}"
+wheel.packages = ["src/vsim"]
+wheel.install-dir = "vsim"
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
