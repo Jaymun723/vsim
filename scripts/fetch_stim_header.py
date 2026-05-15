@@ -1,81 +1,84 @@
 #!/usr/bin/env python3
-"""
-Download and vendor the stim C++ amalgamation header (stim.h) and
-the companion source tree used for building the _fast extension.
-
-Usage:
-    python scripts/fetch_stim_header.py [--version 1.15.0] [--output vendor/stim.h]
-
-The script downloads the stim sdist from PyPI, extracts stim.h, and writes it
-to vendor/stim.h.  It also prints a SHA-256 digest so you can verify integrity
-against the known-good value.
-"""
+"""Download stim sources from PyPI into vendor/ for local/native builds."""
 
 from __future__ import annotations
 
 import argparse
 import hashlib
-import io
+import shutil
 import sys
 import tarfile
 import tempfile
 import urllib.request
 from pathlib import Path
 
-_PYPI_SDIST_URL = (
-    "https://files.pythonhosted.org/packages/source/s/stim/stim-{version}.tar.gz"
-)
+_PYPI_SDIST_URL = "https://files.pythonhosted.org/packages/source/s/stim/stim-{version}.tar.gz"
 
-# Known-good SHA-256 for the stim.h file extracted from the 1.15.0 sdist.
+# Known-good SHA-256 for the full stim-{version}.tar.gz sdist archive.
 _KNOWN_SHA256: dict[str, str] = {
-    # Will be filled in after the first run; leave empty to skip check.
+    "1.15.0": "cb0d01b76a596f97f2f46d6d8831274f95ed47f7688a14a3aafde25f5cf68f88",
 }
 
 
-def fetch_stim_header(
+def fetch_stim_sources(
     version: str,
-    output: Path,
+    output_dir: Path,
     check: bool = True,
 ) -> None:
     url = _PYPI_SDIST_URL.format(version=version)
-    print(f"Downloading {url} …", file=sys.stderr)
+    print(f"Downloading {url}...", file=sys.stderr)
 
     with tempfile.NamedTemporaryFile(suffix=".tar.gz", delete=False) as tmp:
         with urllib.request.urlopen(url) as resp:  # noqa: S310
             tmp.write(resp.read())
         tmp_path = Path(tmp.name)
 
-    print("Extracting stim.h …", file=sys.stderr)
-    member_name = f"stim-{version}/src/stim.h"
-    with tarfile.open(tmp_path, "r:gz") as tf:
-        member = tf.getmember(member_name)
-        fobj = tf.extractfile(member)
-        if fobj is None:
-            raise RuntimeError(f"Could not extract {member_name}")
-        content = fobj.read()
-
-    tmp_path.unlink(missing_ok=True)
-
-    digest = hashlib.sha256(content).hexdigest()
-    print(f"SHA-256: {digest}", file=sys.stderr)
+    archive_bytes = tmp_path.read_bytes()
+    archive_digest = hashlib.sha256(archive_bytes).hexdigest()
+    print(f"Archive SHA-256: {archive_digest}", file=sys.stderr)
 
     if check and version in _KNOWN_SHA256:
         expected = _KNOWN_SHA256[version]
-        if digest != expected:
+        if archive_digest != expected:
             raise RuntimeError(
-                f"SHA-256 mismatch for stim.h v{version}:\n"
+                f"SHA-256 mismatch for stim sdist v{version}:\n"
                 f"  expected: {expected}\n"
-                f"  got:      {digest}"
+                f"  got:      {archive_digest}"
             )
 
-    output.parent.mkdir(parents=True, exist_ok=True)
-    output.write_bytes(content)
-    print(f"Written {len(content)} bytes → {output}", file=sys.stderr)
+    print("Extracting stim.h and src/stim/...", file=sys.stderr)
+    extracted_root = Path(tempfile.mkdtemp(prefix="stim-src-"))
+    try:
+        with tarfile.open(tmp_path, "r:gz") as tf:
+            tf.extractall(extracted_root)
+        source_root = extracted_root / f"stim-{version}" / "src"
+        if not source_root.exists():
+            raise RuntimeError(f"Expected source root missing: {source_root}")
+
+        stim_h_src = source_root / "stim.h"
+        stim_dir_src = source_root / "stim"
+        if not stim_h_src.exists() or not stim_dir_src.is_dir():
+            raise RuntimeError("stim sdist does not contain expected src/stim.h and src/stim/")
+
+        output_dir.mkdir(parents=True, exist_ok=True)
+
+        stim_h_dst = output_dir / "stim.h"
+        stim_dir_dst = output_dir / "stim"
+        if stim_dir_dst.exists():
+            shutil.rmtree(stim_dir_dst)
+
+        shutil.copy2(stim_h_src, stim_h_dst)
+        shutil.copytree(stim_dir_src, stim_dir_dst)
+        print(f"Wrote {stim_h_dst}", file=sys.stderr)
+        print(f"Wrote {stim_dir_dst}", file=sys.stderr)
+    finally:
+        tmp_path.unlink(missing_ok=True)
+        shutil.rmtree(extracted_root, ignore_errors=True)
 
 
 def main() -> None:
     parser = argparse.ArgumentParser(
-        description="Download and vendor stim.h from the stim PyPI sdist."
+        description="Download and vendor stim sources from the stim PyPI sdist."
     )
     parser.add_argument(
         "--version",
@@ -83,21 +86,21 @@ def main() -> None:
         help="stim version to fetch (default: 1.15.0)",
     )
     parser.add_argument(
-        "--output",
-        default="vendor/stim.h",
+        "--output-dir",
+        default="vendor",
         type=Path,
-        help="destination path (default: vendor/stim.h)",
+        help="destination directory for stim.h and stim/ (default: vendor)",
     )
     parser.add_argument(
         "--no-check",
         action="store_true",
-        help="skip SHA-256 integrity check",
+        help="skip sdist SHA-256 integrity check",
     )
     args = parser.parse_args()
 
-    fetch_stim_header(
+    fetch_stim_sources(
         version=args.version,
-        output=args.output,
+        output_dir=args.output_dir,
         check=not args.no_check,
     )
 

@@ -7,10 +7,12 @@ from pathlib import Path
 
 import numpy as np
 import pytest
+import stim
 
 import vsim
 from vsim import FastLossyCircuit
 from tests.stim_fixtures import SURFACE_LOSS_STIM
+from vsim.loss_lib import add_noise
 
 
 @pytest.fixture
@@ -156,6 +158,32 @@ def test_measure_reset_clears_loss_flag(tmp_path: Path):
         assert len(arr) == 2, f"Expected 2 measurements, got {len(arr)}"
         assert arr[0] == 2, f"Expected first measurement = 2 (lost)"
         assert arr[1] != 2, f"Expected second measurement ≠ 2 after MR reset"
+
+
+@pytest.mark.parametrize("distance", [3, 5, 7, 9])
+def test_fast_lossy_runs_across_code_distances(tmp_path: Path, distance: int):
+    """Fast path should execute without shape/value errors for common distances."""
+    rounds = distance
+    circuit = stim.Circuit.generated(
+        "surface_code:rotated_memory_z",
+        distance=distance,
+        rounds=rounds,
+        after_clifford_depolarization=0.01,
+        before_measure_flip_probability=0.01,
+        after_reset_flip_probability=0.01,
+    )
+    lossy = add_noise(circuit, p_loss_2q=0.01, p_loss_reset=0.01)
+    p = tmp_path / f"d{distance}.stim"
+    p.write_text(str(lossy), encoding="utf-8")
+
+    flc = FastLossyCircuit(str(p))
+    lengths = set()
+    for seed in range(10):
+        arr = np.asarray(flc.run(seed=seed))
+        lengths.add(arr.size)
+        assert arr.dtype == np.uint8
+        assert set(arr.tolist()).issubset({0, 1, 2})
+    assert len(lengths) == 1
 
 
 def test_error_on_missing_file():
