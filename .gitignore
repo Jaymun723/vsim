@@ -22,4 +22,4 @@ htmlcov/
 *.pyd
 
 # Downloaded stim sources (fetched by scripts/fetch_stim_header.py)
-vendor/stim/
+vendor/
