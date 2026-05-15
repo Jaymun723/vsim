@@ -119,3 +119,13 @@ def test_loss_rate_within_expected_band():
 def test_version_still_exported():
     # Loading the C++ module must not interfere with the package metadata.
     assert vsim.__version__ == "0.1.0"
+
+
+def test_same_output_as_lossy_circuit():
+    """For a fixed seed, FastLossyCircuit and LossyCircuit must produce the same measurement record."""
+    fc = FastLossyCircuit.from_text(SURFACE_LOSS_STIM)
+    lc = LossyCircuit.from_text(SURFACE_LOSS_STIM)
+    for seed in range(8):
+        _, meas_py = lc.run(seed)
+        meas_fast = fc.run(seed)
+        np.testing.assert_array_equal(meas_fast, meas_py)

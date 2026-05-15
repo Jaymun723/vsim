@@ -226,31 +226,52 @@ class FastLossyCircuit {
         }
     }
 
-    py::array_t<uint8_t> run(py::object seed_obj) {
+    py::array_t<uint8_t> run(py::object seed_obj, bool use_numpy_rng = true) {
         // Construct an RNG matching stim's seeding policy
         // (stim.TableauSimulator(seed=...) XORs in INTENTIONAL_VERSION_SEED_INCOMPATIBILITY).
         std::mt19937_64 rng;
-        if (seed_obj.is_none()) {
-            rng = stim::externally_seeded_rng();
-        } else {
-            uint64_t s;
+        uint64_t raw_seed = 0;
+        bool has_seed = !seed_obj.is_none();
+        if (has_seed) {
             try {
-                s = py::cast<uint64_t>(seed_obj);
+                raw_seed = py::cast<uint64_t>(seed_obj);
             } catch (const py::cast_error &) {
                 throw std::invalid_argument(
                     "Expected seed to be None or a 64 bit unsigned integer.");
             }
-            rng = std::mt19937_64(s ^ stim::INTENTIONAL_VERSION_SEED_INCOMPATIBILITY);
+            rng = std::mt19937_64(raw_seed ^ stim::INTENTIONAL_VERSION_SEED_INCOMPATIBILITY);
+        } else {
+            rng = stim::externally_seeded_rng();
         }
 
-        // Roll all loss dice up-front. Uses the same RNG instance — the dice
-        // values are independent of stim's later draws because all loss
-        // sampling completes before any TableauSimulator state work begins.
+        // Roll all loss dice up-front.
         std::vector<double> dice;
         dice.resize(total_loss_targets);
-        std::uniform_real_distribution<double> dist(0.0, 1.0);
-        for (size_t i = 0; i < total_loss_targets; ++i) {
-            dice[i] = dist(rng);
+        if (total_loss_targets > 0) {
+            if (use_numpy_rng) {
+                // Use Numpy to match Python's PCG64 exactly.
+                py::object numpy = py::module_::import("numpy");
+                py::object numpy_random = py::module_::import("numpy.random");
+                py::object rng_np = numpy_random.attr("default_rng")(seed_obj);
+                py::array_t<double> py_dice = rng_np.attr("random")(
+                    total_loss_targets, py::arg("dtype") = numpy.attr("float64"));
+                auto r = py_dice.unchecked<1>();
+                for (size_t i = 0; i < total_loss_targets; ++i) {
+                    dice[i] = r(i);
+                }
+            } else {
+                // Use native C++ RNG for performance/independence.
+                std::mt19937_64 dice_rng;
+                if (has_seed) {
+                    dice_rng = std::mt19937_64(raw_seed);
+                } else {
+                    dice_rng = stim::externally_seeded_rng();
+                }
+                std::uniform_real_distribution<double> dist(0.0, 1.0);
+                for (size_t i = 0; i < total_loss_targets; ++i) {
+                    dice[i] = dist(dice_rng);
+                }
+            }
         }
         size_t dice_offset = 0;
 
@@ -405,7 +426,7 @@ PYBIND11_MODULE(_fast_loss_lib, m) {
         .def(py::init<const std::string &>(), py::arg("circuit_path"))
         .def_static(
             "from_text", &FastLossyCircuit::from_text, py::arg("text"))
-        .def("run", &FastLossyCircuit::run, py::arg("seed") = py::none())
+        .def("run", &FastLossyCircuit::run, py::arg("seed") = py::none(), py::arg("use_numpy_rng") = true)
         .def_readonly("num_qubits", &FastLossyCircuit::num_qubits)
         .def_readonly("num_loss_instructions",
                       &FastLossyCircuit::total_loss_targets);
