@@ -2,79 +2,48 @@
 
 Loss-aware sampling for Stim circuits (surface-code workflows).
 
-
 ## Install
 
-vsim ships a native C++ extension (`FastLossyCircuit`) that drives
-`stim::TableauSimulator` directly. Building it requires:
-
-- a C++20 compiler (GCC 10+ / Clang 12+)
-- CMake ≥ 3.20
-- Python ≥ 3.14
-- the upstream stim source tree, included as a git submodule
-
-### 1. Clone submodules
-
 ```bash
-git clone --recurse-submodules <repo-url>
-# or, in an existing checkout:
-git submodule update --init --recursive
+uv add vsim
+# Or using pip
+pip install vsim
 ```
 
-### 2. Install with the GCC workaround if needed
+Building the native C++ extension requires a C++20 compiler (GCC 10+ / Clang 12+) and CMake ≥ 3.20.
 
-On Python 3.14 the `stim` PyPI wheel is built from source — and several
-upstream stim headers omit `<cstdint>`, which trips GCC ≥ 15. **If your
-compiler is GCC 15+ (or you're unsure), use this command:**
+## Usage
 
-```bash
-CXXFLAGS="-include cstdint" uv sync --group dev
+```python
+from stim import Circuit
+from vsim import add_noise, FastLossyCircuit
+
+# Generate a surface code circuit with stim
+circuit = Circuit.generated(
+    "surface_code:rotated_memory_z",
+    distance=5,
+    rounds=5,
+    after_clifford_depolarization=0.01,
+    before_measure_flip_probability=0.01,
+    after_reset_flip_probability=0.01,
+)
+
+# Add loss probabilities after 2 qubit gates, and reset gates
+lossy_circuit = add_noise(circuit, p_2q = 0.01, p_reset = 0.01)
+
+results = []
+shots = 10_000
+
+# this should run in less than 1s
+for _ in range(shots):
+    results.append(
+        lossy_circuit.run()
+    )
 ```
-
-Check your compiler with `g++ --version | head -1`. Plain `uv sync
---group dev` works for GCC 14 and earlier.
-
-If a previous attempt left the venv half-built, blow it away first:
-
-```bash
-rm -rf .venv
-CXXFLAGS="-include cstdint" uv sync --group dev
-```
-
-### 3. Verify
-
-```bash
-uv run python -c "import stim, vsim; from vsim import FastLossyCircuit; print('ok', vsim.__version__)"
-```
-
-This should print `ok 0.1.0`. If it errors with `ModuleNotFoundError:
-No module named 'stim'`, the stim wheel failed to build — re-run step 2
-with the `CXXFLAGS` prefix.
-
-### 4. Run tests
-
-```bash
-uv run --group dev pytest
-```
-
-The build uses `scikit-build-core` + CMake to compile the extension
-together with the vendored stim sources. The CMake step filters out
-stim's tests, perf benchmarks, pybind layer, and subsystems unused by
-`TableauSimulator`; the rest is compiled into the extension module.
-
-Regenerate the golden loss histogram snapshot (uses `devtools/legacy_loss_lib.py`):
-
-```bash
-uv run --group dev python devtools/regenerate_loss_snapshot.py
-```
-
 
 ## FastLossyCircuit
 
-`FastLossyCircuit` is a drop-in C++ replacement for the per-shot path of
-`LossyCircuit.run()`. The expensive work — parsing, categorising
-instructions — happens once in `__init__`; each `run(seed)` then samples
-loss dice and drives `stim::TableauSimulator` in C++.
+`FastLossyCircuit` is a drop-in C++ replacement for the per-shot path of `LossyCircuit.run()`. The expensive work — parsing and categorising instructions — happens once in `__init__`; each `run(seed)` then samples loss dice and drives `stim::TableauSimulator` in C++.
 
 ```python
 from vsim import FastLossyCircuit
@@ -88,11 +57,35 @@ measurements = fc.run(seed=0)
 #   2    → heralded-loss slot
 ```
 
-`run(seed=None)` picks a fresh OS-seeded RNG. Integer seeds are XORed
-with stim's `INTENTIONAL_VERSION_SEED_INCOMPATIBILITY` constant so the
-gate-side RNG stream matches `stim.TableauSimulator(seed=...)`.
+Typical speedups vs. Python-based sampling on rotated-memory-z surface codes: ~50× at d=3, ~60× at d=5, ~75× at d=7.
 
-A Path D arm in `scripts/benchmark_syndrome_vs_run.py` exercises this
-class against the existing Python paths. Typical speedups vs.
-`LossyCircuit.run()` on rotated-memory-z surface codes: ~50× at d=3,
-~60× at d=5, ~75× at d=7.
+## Development
+
+Clone the repository with submodules:
+```bash
+git clone --recurse-submodules <repo-url>
+```
+
+Setup the development environment:
+```bash
+uv sync --group dev
+```
+
+*Note: On Python 3.14 with GCC 15+, you may need `CXXFLAGS="-include cstdint" uv sync --group dev` to build `stim` correctly.*
+
+Run tests:
+```bash
+uv run --group dev pytest
+```
+
+### Benchmarks
+
+Start with this command to see the help message:
+```bash
+uv run python scripts/benchmark_syndrome_vs_run.py --help
+```
+
+Full benchmark run:
+```bash
+uv run scripts/benchmark_syndrome_vs_run.py -A -B -C -D --shots 1000
+```

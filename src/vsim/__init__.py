@@ -14,7 +14,15 @@ try:
 except ImportError:  # pragma: no cover
     FastLossyCircuit = None  # type: ignore[assignment]
 
-__version__ = "0.1.0"
+try:
+    from importlib.metadata import version as _version
+except ImportError:  # pragma: no cover
+    from importlib_metadata import version as _version  # type: ignore
+
+try:
+    __version__ = _version("vsim")
+except Exception:  # pragma: no cover
+    __version__ = "unknown"
 
 __all__ = [
     "FastLossyCircuit",

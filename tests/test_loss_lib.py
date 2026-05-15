@@ -22,7 +22,8 @@ from vsim.loss_lib import (
 
 
 def test_version_exported():
-    assert vsim.__version__ == "0.1.0"
+    assert isinstance(vsim.__version__, str)
+    assert vsim.__version__ != "unknown"
 
 
 def test_loss_instruction_new_gate_target_vs_int():

@@ -118,7 +118,8 @@ def test_loss_rate_within_expected_band():
 
 def test_version_still_exported():
     # Loading the C++ module must not interfere with the package metadata.
-    assert vsim.__version__ == "0.1.0"
+    assert isinstance(vsim.__version__, str)
+    assert vsim.__version__ != "unknown"
 
 
 def test_same_output_as_lossy_circuit():
