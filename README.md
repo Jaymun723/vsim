@@ -11,9 +11,9 @@ vsim ships a native C++ extension (`FastLossyCircuit`) that drives
 - a C++20 compiler (GCC 10+ / Clang 12+)
 - CMake ≥ 3.20
 - Python ≥ 3.14
-- the upstream stim source tree, vendored as a git submodule
+- the upstream stim source tree, included as a git submodule
 
-Clone with submodules, or initialise them after the fact:
+### 1. Clone submodules
 
 ```bash
 git clone --recurse-submodules <repo-url>
@@ -21,33 +21,46 @@ git clone --recurse-submodules <repo-url>
 git submodule update --init --recursive
 ```
 
-Then install:
+### 2. Install with the GCC workaround if needed
+
+On Python 3.14 the `stim` PyPI wheel is built from source — and several
+upstream stim headers omit `<cstdint>`, which trips GCC ≥ 15. **If your
+compiler is GCC 15+ (or you're unsure), use this command:**
 
 ```bash
-uv sync --group dev        # editable dev env (pytest, notebooks, …)
-# or
-pip install vsim
+CXXFLAGS="-include cstdint" uv sync --group dev
+```
+
+Check your compiler with `g++ --version | head -1`. Plain `uv sync
+--group dev` works for GCC 14 and earlier.
+
+If a previous attempt left the venv half-built, blow it away first:
+
+```bash
+rm -rf .venv
+CXXFLAGS="-include cstdint" uv sync --group dev
+```
+
+### 3. Verify
+
+```bash
+uv run python -c "import stim, vsim; from vsim import FastLossyCircuit; print('ok', vsim.__version__)"
+```
+
+This should print `ok 0.1.0`. If it errors with `ModuleNotFoundError:
+No module named 'stim'`, the stim wheel failed to build — re-run step 2
+with the `CXXFLAGS` prefix.
+
+### 4. Run tests
+
+```bash
+uv run --group dev pytest
 ```
 
 The build uses `scikit-build-core` + CMake to compile the extension
 together with the vendored stim sources. The CMake step filters out
 stim's tests, perf benchmarks, pybind layer, and subsystems unused by
 `TableauSimulator`; the rest is compiled into the extension module.
-
-**GCC ≥ 15 note.** Several stim headers omit `<cstdint>` and rely on it
-being pulled in transitively. The CMake build force-includes it for our
-extension, but the `stim` PyPI wheel (a build-time dependency on Python
-3.14) needs the same workaround at install time:
-
-```bash
-CXXFLAGS="-include cstdint" uv sync --group dev
-```
-
-Run tests:
-
-```bash
-uv run --group dev pytest
-```
 
 Regenerate the golden loss histogram snapshot (uses `devtools/legacy_loss_lib.py`):
 
