@@ -23,3 +23,6 @@ htmlcov/
 
 # Downloaded stim sources (fetched by scripts/fetch_stim_header.py)
 vendor/
+
+# Versionning
+_version.py

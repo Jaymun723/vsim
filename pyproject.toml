@@ -19,10 +19,7 @@ dynamic = ["version"]
 description = "Quantum circuit simulation utilities (lossy surface-code sampling)."
 readme = "README.md"
 requires-python = ">=3.14"
-dependencies = [
-    "numpy>=2.4.4",
-    "stim>=1.15.0",
-]
+dependencies = ["numpy>=2.4.4", "stim>=1.15.0"]
 
 [project.optional-dependencies]
 dev = [
@@ -50,16 +47,12 @@ dev = [
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
-addopts = [
-    "--cov=vsim",
-    "--cov-report=term-missing",
-    "--cov-fail-under=100",
-]
+addopts = ["--cov=vsim", "--cov-report=term-missing", "--cov-fail-under=100"]
 
 [tool.coverage.run]
 branch = true
 source = ["vsim"]
-omit = ["*/vsim/_fast*"]
+omit = ["*/vsim/_fast*", "*/vsim/_version.py"]
 
 [tool.coverage.report]
 exclude_lines = ["pragma: no cover", "if __name__ == .__main__.:"]
