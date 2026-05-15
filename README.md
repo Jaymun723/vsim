@@ -17,6 +17,15 @@ Run tests:
 uv run --group dev pytest
 ```
 
+Fetch stim C++ sources used by the native extension (not committed to git):
+
+```bash
+python scripts/fetch_stim_header.py --version 1.15.0
+```
+
+`CMakeLists.txt` also auto-fetches these sources during extension builds if
+`vendor/stim/` is missing.
+
 Regenerate the golden loss histogram snapshot (uses `devtools/legacy_loss_lib.py`):
 
 ```bash

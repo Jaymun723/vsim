@@ -1,6 +1,11 @@
 [build-system]
-requires = ["hatchling>=1.26"]
-build-backend = "hatchling.build"
+requires = ["scikit-build-core>=0.10", "nanobind>=2"]
+build-backend = "scikit_build_core.build"
+
+[tool.scikit-build]
+minimum-version = "build-system.requires"
+# Include the Python source package from src/ just like hatchling did.
+wheel.packages = ["src/vsim"]
 
 [project]
 name = "vsim"
@@ -48,6 +53,7 @@ addopts = [
 [tool.coverage.run]
 branch = true
 source = ["vsim"]
+omit = ["*/vsim/_fast*"]
 
 [tool.coverage.report]
 exclude_lines = ["pragma: no cover", "if __name__ == .__main__.:"]

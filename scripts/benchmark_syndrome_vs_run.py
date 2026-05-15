@@ -14,6 +14,10 @@ Benchmark different simulation paths:
   Path C (integrated tableau path)
     Call ``run(seed)`` exactly ``shots`` times with sequential seeds.
 
+  Path D (FastLossyCircuit — C++ extension)
+    Serialize the LossyCircuit to a temp file, construct FastLossyCircuit once,
+    then call ``flc.run(seed)`` exactly ``shots`` times.
+
 Distances default to 3, 5, 7 (surface_code:rotated_memory_z + add_noise).
 
 Example:
@@ -25,11 +29,14 @@ from __future__ import annotations
 
 import argparse
 import time
+import tempfile
+from pathlib import Path
 from statistics import mean
 
 import numpy as np
 import stim
 
+from vsim import FastLossyCircuit
 from vsim.loss_lib import (
     LossSyndrome,
     LossyCircuit,
@@ -145,6 +152,22 @@ def bench_run_path(lc: LossyCircuit, shots: int, seed_start: int) -> float:
     return time.perf_counter() - t0
 
 
+def bench_fast_run_path(
+    lc: LossyCircuit,
+    shots: int,
+    seed_start: int,
+    tmp_path: Path,
+) -> float:
+    """Path D: FastLossyCircuit (C++ extension) — no Python per-instruction overhead."""
+    p = tmp_path / "circuit.stim"
+    p.write_text(str(lc), encoding="utf-8")
+    flc = FastLossyCircuit(str(p))
+    t0 = time.perf_counter()
+    for i in range(shots):
+        flc.run(seed_start + i)
+    return time.perf_counter() - t0
+
+
 def main() -> None:
     p = argparse.ArgumentParser(
         description="Benchmark simulation paths A, B, and C",
@@ -180,6 +203,7 @@ def main() -> None:
     p.add_argument("--skip-a", action="store_true", help="Skip path A")
     p.add_argument("--skip-b", action="store_true", help="Skip path B")
     p.add_argument("--skip-c", action="store_true", help="Skip path C")
+    p.add_argument("--skip-d", action="store_true", help="Skip path D (FastLossyCircuit)")
     args = p.parse_args()
 
     for d in args.distances:
@@ -189,6 +213,7 @@ def main() -> None:
         res_a: list[tuple[float, float, int]] = []
         res_b: list[tuple[float, float, int]] = []
         res_c: list[float] = []
+        res_d: list[float] = []
 
         for repeat_index in range(args.repeats):
             if not args.skip_a:
@@ -197,6 +222,16 @@ def main() -> None:
                 res_b.append(bench_histogram_and_tableau(lc, args.shots, args.seed))
             if not args.skip_c:
                 res_c.append(bench_run_path(lc, args.shots, args.seed + repeat_index))
+            if not args.skip_d:
+                with tempfile.TemporaryDirectory() as tmp_dir:
+                    res_d.append(
+                        bench_fast_run_path(
+                            lc,
+                            args.shots,
+                            args.seed + repeat_index,
+                            Path(tmp_dir),
+                        )
+                    )
 
         if not args.skip_a:
             m_hist = mean(r[0] for r in res_a)
@@ -212,7 +247,11 @@ def main() -> None:
 
         if not args.skip_c:
             m_run = mean(res_c)
-            print(f"  Path C (run() loop)   total: {m_run:.4f}s")
+            print(f"  Path C (run() loop)          total: {m_run:.4f}s")
+
+        if not args.skip_d:
+            m_fast = mean(res_d)
+            print(f"  Path D (FastLossyCircuit)    total: {m_fast:.4f}s")
 
 
 if __name__ == "__main__":
