@@ -53,9 +53,13 @@ enum class InstrKind : uint8_t {
 };
 
 // Classify a stim GateType using the gate's flag bits.
-// Heralded noise gates (HERALDED_ERASE, HERALDED_PAULI_CHANNEL_1) produce
-// results but are noisy single-qubit gates – treat them like GATE_1Q so that
-// missing qubits are simply skipped rather than tracked as lost measurements.
+//
+// Note: in stim, all measurement gates (M, MR, MRX, ...) are flagged as
+// GATE_IS_NOISY because they accept an optional flip-probability argument.
+// We must therefore NOT use !is_noisy to identify measurement gates.
+// Instead we exclude only the explicitly heralded noise gates
+// (HERALDED_ERASE, HERALDED_PAULI_CHANNEL_1), which produce results but
+// should be skipped for missing qubits like any other error channel.
 static InstrKind classify_gate(stim::GateType gt) noexcept {
     const auto &gate  = stim::GATE_DATA[gt];
     const uint16_t f  = gate.flags;
@@ -67,15 +71,19 @@ static InstrKind classify_gate(stim::GateType gt) noexcept {
 
     const bool produces = (f & stim::GateFlags::GATE_PRODUCES_RESULTS) != 0;
     const bool is_reset = (f & stim::GateFlags::GATE_IS_RESET)          != 0;
-    const bool is_noisy = (f & stim::GateFlags::GATE_IS_NOISY)          != 0;
     const bool pairs    = (f & stim::GateFlags::GATE_TARGETS_PAIRS)     != 0;
 
-    // Measurement gates that are also noisy (HERALDED_ERASE, etc.) behave
-    // like ordinary 1-qubit gates in the lossy simulation – skip lost qubits.
-    if (produces && is_reset && !is_noisy) return InstrKind::MEASURE_RESET;
-    if (produces && !is_noisy)             return InstrKind::MEASURE;
-    if (is_reset)                          return InstrKind::RESET;
-    if (pairs)                             return InstrKind::GATE_2Q;
+    // Heralded noise gates (HERALDED_ERASE, HERALDED_PAULI_CHANNEL_1) produce
+    // results but behave like ordinary error channels in the lossy simulation:
+    // simply skip the gate for missing qubits rather than tracking their
+    // measurements as heralded-loss entries.
+    const bool is_heralded = (gt == stim::GateType::HERALDED_ERASE ||
+                               gt == stim::GateType::HERALDED_PAULI_CHANNEL_1);
+
+    if (produces && is_reset && !is_heralded) return InstrKind::MEASURE_RESET;
+    if (produces && !is_heralded)             return InstrKind::MEASURE;
+    if (is_reset)                             return InstrKind::RESET;
+    if (pairs)                                return InstrKind::GATE_2Q;
     return InstrKind::GATE_1Q;
 }
 
